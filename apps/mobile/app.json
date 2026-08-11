@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Swiftcart",
+    "slug": "swiftcart",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "swiftcart",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "test.swiftcart.app",
+      "predictiveBackGestureEnabled": false
+    },
+    "ios": {
+      "bundleIdentifier": "test.swiftcart.app",
+      "supportsTablet": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

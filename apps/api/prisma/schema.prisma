@@ -1,0 +1,162 @@
+// Prisma 7: the generator is `prisma-client` (not `prisma-client-js`), `output`
+// is required, and the datasource carries NO `url` — the connection string
+// lives in prisma.config.ts and reaches the client via a driver adapter.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  name          String
+  passwordHash  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cartItems     CartItem[]
+  orders        Order[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// Opaque refresh tokens, stored as sha256 hashes. In Postgres rather than a
+/// cache so that clearing a cache can never sign everyone out, and because
+/// reuse detection needs the revoked history a TTL store would discard.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  tokenHash    String    @unique
+  /// Rotation lineage. Replaying any token revokes its whole family.
+  familyId     String    @db.Uuid
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Product {
+  id                 String   @id @default(uuid()) @db.Uuid
+  /// Stable id from the seed source, so re-seeding updates rather than duplicates.
+  externalId         Int      @unique
+  sku                String   @unique
+  title              String
+  description        String
+  category           String
+  brand              String?
+  /// Minor units (cents). Never a float — see packages/shared/src/money.ts.
+  priceCents         Int
+  discountPercentage Float    @default(0)
+  rating             Float    @default(0)
+  stock              Int      @default(0)
+  thumbnail          String
+  images             String[]
+  tags               String[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  reviews    Review[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([category])
+  @@index([title])
+  @@map("products")
+}
+
+model Review {
+  id           String   @id @default(uuid()) @db.Uuid
+  productId    String   @db.Uuid
+  rating       Int
+  comment      String
+  reviewerName String
+  createdAt    DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("reviews")
+}
+
+model CartItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  productId String   @db.Uuid
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// One row per product per user — makes "add to cart" an idempotent upsert.
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("cart_items")
+}
+
+enum OrderStatus {
+  PLACED
+  PACKED
+  SHIPPED
+  DELIVERED
+}
+
+model Order {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @db.Uuid
+  /// Short human-facing code, e.g. SC-7QK4M2.
+  reference String      @unique
+  status    OrderStatus @default(PLACED)
+
+  subtotalCents Int
+  taxCents      Int
+  shippingCents Int
+  totalCents    Int
+
+  shippingFullName    String
+  shippingAddressLine String
+  shippingCity        String
+  shippingPostalCode  String
+  shippingCountry     String
+
+  createdAt DateTime @default(now())
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items OrderItem[]
+
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id      String @id @default(uuid()) @db.Uuid
+  orderId String @db.Uuid
+  /// Nullable, and SetNull on delete: an order is a historical record and must
+  /// survive the product being removed from the catalogue.
+  productId String? @db.Uuid
+
+  /// Snapshots. A past order must never re-read today's catalogue — if it did,
+  /// a price change would silently rewrite what the customer was charged.
+  title      String
+  thumbnail  String
+  unitPrice  Int
+  quantity   Int
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_items")
+}
