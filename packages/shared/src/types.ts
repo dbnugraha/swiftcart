@@ -1,4 +1,4 @@
-import type { Cents, OrderTotals } from "./money";
+import type { Cents, OrderTotals } from "./money.js";
 
 /**
  * The API's wire contract, imported by both sides.

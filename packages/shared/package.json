@@ -3,12 +3,23 @@
   "version": "1.0.0",
   "private": true,
   "description": "Types and money helpers shared by the API and the mobile client.",
-  "//": "Ships TypeScript source, consumed by tsx on the API side and Metro on the mobile side — neither needs a build step. `type: module` is required or Node resolves it as CommonJS and named imports fail.",
+  "//": "Compiled to dist rather than shipping TypeScript source. A .ts entry point works for Metro but NodeNext resolution refuses to follow it, so the API could not typecheck against it. Building emits .js with explicit extensions plus .d.ts, which both resolvers accept.",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit"
   },
   "devDependencies": {
     "typescript": "~6.0.3"

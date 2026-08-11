@@ -11,6 +11,10 @@
     "node": ">=20.19"
   },
   "scripts": {
+    "//": "shared must be built before either app can typecheck against it; postinstall covers a fresh clone.",
+    "postinstall": "npm run build --workspace @swiftcart/shared",
+    "build:shared": "npm run build --workspace @swiftcart/shared",
+    "dev:shared": "npm run dev --workspace @swiftcart/shared",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d",

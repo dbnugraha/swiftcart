@@ -5,13 +5,17 @@ import { authed, requireAuth } from "../../middleware/require-auth.js";
 import { pathParam, validateBody } from "../../middleware/validate.js";
 import * as service from "./cart.service.js";
 
+// Kept in step with MAX_QUANTITY_PER_LINE in cart.service.ts, which explains
+// why the bound exists at all.
+const MAX_QUANTITY = 99;
+
 const addSchema = z.object({
   productId: z.string().min(1, "A product is required."),
-  quantity: z.coerce.number().int().min(1).max(10).default(1),
+  quantity: z.coerce.number().int().min(1).max(MAX_QUANTITY).default(1),
 });
 
 const quantitySchema = z.object({
-  quantity: z.coerce.number().int().min(0).max(10),
+  quantity: z.coerce.number().int().min(0).max(MAX_QUANTITY),
 });
 
 export const cartRouter = Router();

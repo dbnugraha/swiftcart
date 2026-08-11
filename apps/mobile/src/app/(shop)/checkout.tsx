@@ -96,7 +96,12 @@ export default function CheckoutScreen() {
       // the authoritative state rather than assuming.
       await reload().catch(() => undefined);
 
-      router.replace(`/order/${order.id}?placed=1` as any);
+      // `placed` makes the confirmation screen celebrate rather than read as a
+      // plain order lookup.
+      router.replace({
+        pathname: "/order/[id]",
+        params: { id: order.id, placed: "1" },
+      });
     } catch (cause) {
       // Stock can vanish between adding to the cart and paying, so this is a
       // normal outcome rather than an exception — say which item and send them

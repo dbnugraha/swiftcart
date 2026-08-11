@@ -129,7 +129,9 @@ function OrderCard({ order }: { order: Order }) {
         shadows.soft,
         pressed && styles.pressed,
       ]}
-      onPress={() => router.push(`/order/${order.id}` as any)}
+      onPress={() =>
+        router.push({ pathname: "/order/[id]", params: { id: order.id } })
+      }
       accessibilityRole="button"
       accessibilityLabel={`Order ${order.reference}`}
     >

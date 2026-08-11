@@ -11,7 +11,12 @@ import { prisma } from "../../db/prisma.js";
 import { conflict, notFound, unprocessable } from "../../lib/errors.js";
 import { isUuid } from "../../lib/ids.js";
 
-const MAX_QUANTITY_PER_LINE = 10;
+/**
+ * A sanity bound, not a business rule — it only exists to keep quantities and
+ * payloads reasonable. **Stock is the real limit**, enforced below and again
+ * inside the checkout transaction.
+ */
+const MAX_QUANTITY_PER_LINE = 99;
 
 type ProductRow = {
   id: string;

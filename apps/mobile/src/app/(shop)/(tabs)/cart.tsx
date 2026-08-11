@@ -10,7 +10,7 @@ import { useCart } from "@/context/cart";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
 
 export default function CartScreen() {
-  const { cart, isLoading, setQuantity, remove, clear } = useCart();
+  const { cart, isLoading, changeQuantity, remove, clear } = useCart();
   const bottomInset = useTabBarInset();
 
   if (isLoading) return <Screen><Loading label="Loading your cart" /></Screen>;
@@ -56,8 +56,10 @@ export default function CartScreen() {
           <Line
             key={line.productId}
             line={line}
-            onDecrease={() => setQuantity(line.productId, line.quantity - 1)}
-            onIncrease={() => setQuantity(line.productId, line.quantity + 1)}
+            // Deltas, not absolutes: the context resolves the target when it
+            // actually sends, so fast taps can't send a stale base.
+            onDecrease={() => changeQuantity(line.productId, -1)}
+            onIncrease={() => changeQuantity(line.productId, 1)}
             onRemove={() => remove(line.productId)}
             onPress={() => router.push(`/product/${line.productId}`)}
           />
@@ -105,7 +107,9 @@ function Line({
   onRemove: () => void;
   onPress: () => void;
 }) {
-  const atStockLimit = line.quantity >= Math.min(line.product.stock, 10);
+  // Stock is the limit that means something; 99 is only a sanity bound and
+  // mirrors MAX_QUANTITY_PER_LINE on the server.
+  const atStockLimit = line.quantity >= Math.min(line.product.stock, 99);
 
   return (
     <View style={[styles.line, shadows.soft]}>

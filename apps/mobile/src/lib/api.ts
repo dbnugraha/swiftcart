@@ -74,6 +74,8 @@ type RequestOptions = {
   /** Send the bearer and refresh-and-retry on 401. Default true. */
   auth?: boolean;
   signal?: AbortSignal;
+  /** Extra headers for this call. `content-type` and `authorization` win over these. */
+  headers?: Record<string, string>;
 };
 
 function parseError(status: number, payload: unknown): ApiError {
@@ -132,7 +134,6 @@ async function rawFetch(
 
   const headers: Record<string, string> = {
     accept: "application/json",
-    "Bypass-Tunnel-Reminder": "true",
     ...options.headers,
   };
   if (options.body !== undefined) headers["content-type"] = "application/json";

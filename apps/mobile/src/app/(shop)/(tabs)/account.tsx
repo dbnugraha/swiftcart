@@ -84,7 +84,7 @@ export default function AccountScreen() {
             icon="receipt-outline"
             label="My Orders"
             detail={`${profile.orderCount} ${profile.orderCount === 1 ? "order" : "orders"}`}
-            onPress={() => router.push("/orders" as any)}
+            onPress={() => router.push("/orders")}
           />
 
           <View style={styles.separator} />
