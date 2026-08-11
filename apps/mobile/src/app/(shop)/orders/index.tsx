@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -6,18 +7,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { formatCents, type Order } from "@swiftcart/shared";
 
-import { Button, Loading, Screen, StateView } from "@/components/ui";
+import { OrderStatusPill } from "@/components/OrderStatus";
+import { BackHeader, Button, Loading, Screen, StateView } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
 
-const DEFAULT_STATUS_COLOR = { bg: `${colors.primary}18`, fg: colors.primary };
-
-const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  PLACED: DEFAULT_STATUS_COLOR,
-  PACKED: { bg: `${colors.accent}18`, fg: colors.accent },
-  SHIPPED: { bg: "#3498db22", fg: "#2980b9" },
-  DELIVERED: { bg: `${colors.success}18`, fg: colors.success },
-};
+/** Thumbnails shown on a card before it collapses the rest into "+N". */
+const THUMBS_SHOWN = 3;
 
 export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
@@ -47,18 +43,14 @@ export default function OrdersScreen() {
 
   return (
     <Screen edges={["top", "left", "right"]}>
-      <View style={styles.head}>
-        <Button
-          label="Back"
-          icon="chevron-back"
-          variant="secondary"
-          style={styles.backButton}
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/")
-          }
-        />
-        <Text style={typography.screenTitle}>My Orders</Text>
-      </View>
+      <BackHeader
+        title="My orders"
+        subtitle={
+          isLoading || error
+            ? undefined
+            : `${orders.length} ${orders.length === 1 ? "order" : "orders"}`
+        }
+      />
 
       {isLoading ? (
         <Loading label="Loading your orders" />
@@ -114,13 +106,15 @@ export default function OrdersScreen() {
 }
 
 function OrderCard({ order }: { order: Order }) {
-  const statusColor = STATUS_COLORS[order.status] ?? STATUS_COLORS.PLACED;
   const itemCount = order.lines.reduce((sum, l) => sum + l.quantity, 0);
   const dateStr = new Date(order.createdAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
+
+  const thumbs = order.lines.slice(0, THUMBS_SHOWN);
+  const hidden = order.lines.length - thumbs.length;
 
   return (
     <Pressable
@@ -133,47 +127,54 @@ function OrderCard({ order }: { order: Order }) {
         router.push({ pathname: "/order/[id]", params: { id: order.id } })
       }
       accessibilityRole="button"
-      accessibilityLabel={`Order ${order.reference}`}
+      accessibilityLabel={`Order ${order.reference}, ${itemCount} items, ${formatCents(order.total)}`}
     >
       <View style={styles.cardTop}>
-        <View>
-          <Text style={typography.cardTitle}>{order.reference}</Text>
+        {/* flex so a long reference wraps instead of running under the pill. */}
+        <View style={styles.cardHeading}>
+          <Text style={typography.cardTitle} numberOfLines={1}>
+            {order.reference}
+          </Text>
           <Text style={typography.caption}>{dateStr}</Text>
         </View>
-        <View style={[styles.statusPill, { backgroundColor: (statusColor ?? DEFAULT_STATUS_COLOR).bg }]}>
-          <Text style={[styles.statusText, { color: (statusColor ?? DEFAULT_STATUS_COLOR).fg }]}>
-            {order.status}
-          </Text>
-        </View>
+        <OrderStatusPill status={order.status} />
+      </View>
+
+      <View style={styles.thumbs}>
+        {thumbs.map((line, i) => (
+          <Image
+            key={i}
+            source={{ uri: line.thumbnail }}
+            style={styles.thumb}
+            contentFit="contain"
+            transition={120}
+          />
+        ))}
+        {hidden > 0 && (
+          <View style={[styles.thumb, styles.thumbMore]}>
+            <Text style={typography.caption}>+{hidden}</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.divider} />
 
+      {/* Everything in flow — the chevron used to be absolutely positioned at
+          the card's midpoint, which put it straight on top of the total. */}
       <View style={styles.cardBottom}>
         <Text style={typography.bodyMuted}>
           {itemCount} {itemCount === 1 ? "item" : "items"}
         </Text>
-        <Text style={typography.price}>{formatCents(order.total)}</Text>
-      </View>
-
-      <View style={styles.cardArrow}>
-        <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        <View style={styles.cardTotal}>
+          <Text style={typography.price}>{formatCents(order.total)}</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+        </View>
       </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  head: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  backButton: {
-    alignSelf: "flex-start",
-    height: 38,
-    paddingHorizontal: spacing.md,
-  },
   content: { paddingHorizontal: spacing.lg, gap: spacing.md },
   card: {
     backgroundColor: colors.surface,
@@ -186,17 +187,19 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.md,
   },
-  statusPill: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radii.pill,
+  cardHeading: { flex: 1, gap: 2 },
+  thumbs: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
-  statusText: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+  thumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceMuted,
   },
+  thumbMore: { alignItems: "center", justifyContent: "center" },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
@@ -206,13 +209,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: spacing.md,
   },
-  cardArrow: {
-    position: "absolute",
-    right: spacing.lg,
-    top: "50%",
-    marginTop: -9,
-    opacity: 0.5,
-  },
+  cardTotal: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   pressed: { opacity: 0.85 },
 });

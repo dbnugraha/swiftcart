@@ -14,6 +14,7 @@ import Animated, {
 
 import { formatCents, type Product } from "@swiftcart/shared";
 
+import { useTabSwipeRef } from "@/components/TabSwipe";
 import { Stars } from "@/components/ui";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
 
@@ -44,6 +45,7 @@ export default function SwipeDeck({
 }) {
   const { width } = useWindowDimensions();
   const [cursor, setCursor] = useState(0);
+  const tabSwipe = useTabSwipeRef();
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -76,6 +78,9 @@ export default function SwipeDeck({
   };
 
   const pan = Gesture.Pan()
+    // Both this and the tab swipe want a horizontal drag. On the card, the card
+    // wins — swiping products is the entire point of this screen.
+    .blocksExternalGesture(...(tabSwipe ? [tabSwipe] : []))
     .onUpdate((event) => {
       translateX.value = event.translationX;
       translateY.value = event.translationY;

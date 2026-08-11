@@ -4,19 +4,16 @@ import { router, useLocalSearchParams } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { formatCents, type Order, type OrderStatus } from "@swiftcart/shared";
+import { formatCents, type Order } from "@swiftcart/shared";
 
-import { Button, Loading, Screen, StateView } from "@/components/ui";
+import {
+  orderStatusBlurb,
+  OrderStatusPill,
+  OrderTimeline,
+} from "@/components/OrderStatus";
+import { BackHeader, Button, Loading, Screen, StateView } from "@/components/ui";
 import { useResource } from "@/hooks/use-resource";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
-
-const STATUS_STEPS: OrderStatus[] = ["PLACED", "PACKED", "SHIPPED", "DELIVERED"];
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  PLACED: "Placed",
-  PACKED: "Packed",
-  SHIPPED: "Shipped",
-  DELIVERED: "Delivered",
-};
 
 export default function OrderDetailScreen() {
   const { id, placed } = useLocalSearchParams<{ id: string; placed?: string }>();
@@ -38,7 +35,7 @@ export default function OrderDetailScreen() {
   if (error || !order) {
     return (
       <Screen>
-        <BackBar />
+        <BackHeader title="Order" />
         <StateView
           icon="alert-circle-outline"
           title="Couldn't load this order"
@@ -58,7 +55,7 @@ export default function OrderDetailScreen() {
 
   return (
     <Screen edges={["top", "left", "right"]}>
-      <BackBar />
+      <BackHeader title="Order" />
 
       <ScrollView
         contentContainerStyle={[
@@ -89,48 +86,12 @@ export default function OrderDetailScreen() {
 
         {/* Status Timeline */}
         <View style={[styles.card, shadows.soft]}>
-          <Text style={typography.label}>Status</Text>
-          <View style={styles.timeline}>
-            {STATUS_STEPS.map((step, i) => {
-              const currentIdx = STATUS_STEPS.indexOf(order.status);
-              const reached = i <= currentIdx;
-              const isActive = i === currentIdx;
-
-              return (
-                <View key={step} style={styles.timelineStep}>
-                  <View style={styles.timelineTrack}>
-                    <View
-                      style={[
-                        styles.timelineDot,
-                        reached && styles.timelineDotActive,
-                        isActive && styles.timelineDotCurrent,
-                      ]}
-                    >
-                      {reached && (
-                        <Ionicons name="checkmark" size={10} color={colors.surface} />
-                      )}
-                    </View>
-                    {i < STATUS_STEPS.length - 1 && (
-                      <View
-                        style={[
-                          styles.timelineLine,
-                          reached && i < currentIdx && styles.timelineLineActive,
-                        ]}
-                      />
-                    )}
-                  </View>
-                  <Text
-                    style={[
-                      typography.caption,
-                      reached && { color: colors.primary, fontWeight: "700" },
-                    ]}
-                  >
-                    {STATUS_LABELS[step]}
-                  </Text>
-                </View>
-              );
-            })}
+          <View style={styles.statusHead}>
+            <Text style={typography.label}>Status</Text>
+            <OrderStatusPill status={order.status} />
           </View>
+          <Text style={typography.bodyMuted}>{orderStatusBlurb(order.status)}</Text>
+          <OrderTimeline status={order.status} />
         </View>
 
         {/* Items */}
@@ -199,22 +160,6 @@ export default function OrderDetailScreen() {
   );
 }
 
-function BackBar() {
-  return (
-    <View style={styles.backBar}>
-      <Button
-        label="Back"
-        icon="chevron-back"
-        variant="secondary"
-        onPress={() =>
-          router.canGoBack() ? router.back() : router.replace("/")
-        }
-        style={styles.backButton}
-      />
-    </View>
-  );
-}
-
 function Row({
   label,
   value,
@@ -235,12 +180,6 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  backBar: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  backButton: {
-    alignSelf: "flex-start",
-    height: 40,
-    paddingHorizontal: spacing.md,
-  },
   content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
 
   /* Success Banner */
@@ -273,40 +212,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
 
-  /* Timeline */
-  timeline: {
+  /* Status */
+  statusHead: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.xs,
+    gap: spacing.md,
   },
-  timelineStep: { alignItems: "center", gap: spacing.xs },
-  timelineTrack: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  timelineDot: {
-    width: 22,
-    height: 22,
-    borderRadius: radii.pill,
-    backgroundColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  timelineDotActive: { backgroundColor: colors.primary },
-  timelineDotCurrent: {
-    width: 26,
-    height: 26,
-    borderWidth: 3,
-    borderColor: `${colors.primary}40`,
-  },
-  timelineLine: {
-    width: 30,
-    height: 3,
-    backgroundColor: colors.border,
-    marginHorizontal: 2,
-  },
-  timelineLineActive: { backgroundColor: colors.primary },
 
   /* Line Items */
   lineItem: {

@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ERROR_CODES, formatCents, type Order, type ShippingAddress } from "@swiftcart/shared";
 
-import { Button, Screen, StateView } from "@/components/ui";
+import { BackHeader, Button, Screen, StateView } from "@/components/ui";
 import { useCart } from "@/context/cart";
 import { api, errorMessage, isApiError } from "@/lib/api";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
@@ -125,23 +125,19 @@ export default function CheckoutScreen() {
 
   return (
     <Screen edges={["top", "left", "right"]}>
-      <View style={styles.head}>
-        <Button
-          label="Back"
-          icon="chevron-back"
-          variant="secondary"
-          style={styles.backButton}
-          onPress={() =>
-            step === "review"
-              ? setStep("address")
-              : router.canGoBack()
-                ? router.back()
-                : router.replace("/cart")
-          }
-        />
-        <Text style={typography.screenTitle}>Checkout</Text>
-        <Steps step={step} />
-      </View>
+      <BackHeader
+        title="Checkout"
+        subtitle={
+          step === "address" ? "Step 1 of 2 · Delivery address" : "Step 2 of 2 · Review"
+        }
+        // Back unwinds the step first — leaving the whole flow from the review
+        // screen would silently discard a filled-in address.
+        onBack={() => {
+          if (step === "review") return setStep("address");
+          if (router.canGoBack()) router.back();
+          else router.replace("/cart");
+        }}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -267,16 +263,6 @@ export default function CheckoutScreen() {
   );
 }
 
-function Steps({ step }: { step: Step }) {
-  return (
-    <View style={styles.steps}>
-      <Text style={[styles.stepDot, styles.stepOn]}>1 Address</Text>
-      <Ionicons name="chevron-forward" size={13} color={colors.textSecondary} />
-      <Text style={[styles.stepDot, step === "review" && styles.stepOn]}>2 Review</Text>
-    </View>
-  );
-}
-
 function Field({
   label,
   error,
@@ -316,11 +302,6 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  head: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.md },
-  backButton: { alignSelf: "flex-start", height: 38, paddingHorizontal: spacing.md },
-  steps: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  stepDot: { ...typography.caption, fontWeight: "700" },
-  stepOn: { color: colors.primary },
   content: { paddingHorizontal: spacing.lg, gap: spacing.md },
   form: { gap: spacing.md },
   field: { gap: spacing.xs },

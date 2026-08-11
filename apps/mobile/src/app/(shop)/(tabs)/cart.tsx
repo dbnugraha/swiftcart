@@ -7,11 +7,13 @@ import { formatCents, type CartLine } from "@swiftcart/shared";
 
 import { Button, Header, Loading, Screen, StateView, useTabBarInset } from "@/components/ui";
 import { useCart } from "@/context/cart";
+import { useToast } from "@/context/toast";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
 
 export default function CartScreen() {
   const { cart, isLoading, changeQuantity, remove, clear } = useCart();
   const bottomInset = useTabBarInset();
+  const toast = useToast();
 
   if (isLoading) return <Screen><Loading label="Loading your cart" /></Screen>;
 
@@ -60,7 +62,12 @@ export default function CartScreen() {
             // actually sends, so fast taps can't send a stale base.
             onDecrease={() => changeQuantity(line.productId, -1)}
             onIncrease={() => changeQuantity(line.productId, 1)}
-            onRemove={() => remove(line.productId)}
+            onRemove={() => {
+              remove(line.productId);
+              // The line vanishes instantly, so say what went — otherwise a
+              // mis-tap looks like the cart lost something on its own.
+              toast.show(`${line.product.title} removed`, "info");
+            }}
             onPress={() => router.push(`/product/${line.productId}`)}
           />
         ))}
@@ -123,9 +130,24 @@ function Line({
       </Pressable>
 
       <View style={styles.lineBody}>
-        <Text style={typography.cardTitle} numberOfLines={2}>
-          {line.product.title}
-        </Text>
+        <View style={styles.lineHead}>
+          <Text style={[typography.cardTitle, styles.lineTitle]} numberOfLines={2}>
+            {line.product.title}
+          </Text>
+
+          {/* Removing has its own control rather than hiding behind "minus at
+              quantity 1" — that was only discoverable by trying it. */}
+          <Pressable
+            onPress={onRemove}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${line.product.title} from cart`}
+            style={({ pressed }) => [styles.remove, pressed && styles.pressed]}
+          >
+            <Ionicons name="trash-outline" size={16} color={colors.danger} />
+          </Pressable>
+        </View>
+
         <Text style={typography.caption}>
           {formatCents(line.product.salePrice)} each
         </Text>
@@ -133,9 +155,10 @@ function Line({
         <View style={styles.lineFooter}>
           <View style={styles.stepper}>
             <Stepper
-              icon={line.quantity === 1 ? "trash-outline" : "remove"}
-              label={line.quantity === 1 ? "Remove item" : "Decrease quantity"}
-              onPress={line.quantity === 1 ? onRemove : onDecrease}
+              icon="remove"
+              label="Decrease quantity"
+              onPress={onDecrease}
+              disabled={line.quantity <= 1}
             />
             <Text style={styles.quantity}>{line.quantity}</Text>
             <Stepper
@@ -225,6 +248,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   lineBody: { flex: 1, gap: spacing.xs },
+  lineHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  lineTitle: { flex: 1 },
+  remove: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
   lineFooter: {
     flexDirection: "row",
     alignItems: "center",

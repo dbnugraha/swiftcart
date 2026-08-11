@@ -1,12 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { formatCents, type ProductDetail } from "@swiftcart/shared";
 
-import { Button, Loading, Screen, StateView, Stars } from "@/components/ui";
+import { BackHeader, Button, Loading, Screen, StateView, Stars } from "@/components/ui";
 import { useCart } from "@/context/cart";
 import { useToast } from "@/context/toast";
 import { useResource } from "@/hooks/use-resource";
@@ -27,7 +27,7 @@ export default function ProductScreen() {
   if (error || !product) {
     return (
       <Screen>
-        <BackBar />
+        <BackHeader />
         <StateView
           icon="alert-circle-outline"
           title="Couldn't load this product"
@@ -45,7 +45,7 @@ export default function ProductScreen() {
 
   return (
     <Screen edges={["top", "left", "right"]}>
-      <BackBar />
+      <BackHeader />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 110 }]}
@@ -163,20 +163,6 @@ export default function ProductScreen() {
   );
 }
 
-function BackBar() {
-  return (
-    <View style={styles.backBar}>
-      <Button
-        label="Back"
-        icon="chevron-back"
-        variant="secondary"
-        onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-        style={styles.backButton}
-      />
-    </View>
-  );
-}
-
 function StockLine({ stock }: { stock: number }) {
   if (stock <= 0) {
     return (
@@ -204,8 +190,6 @@ function StockLine({ stock }: { stock: number }) {
 }
 
 const styles = StyleSheet.create({
-  backBar: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  backButton: { alignSelf: "flex-start", height: 40, paddingHorizontal: spacing.md },
   content: { gap: spacing.md },
   gallery: {
     height: 260,

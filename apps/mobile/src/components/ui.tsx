@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { router } from "expo-router";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,6 +14,14 @@ import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-co
 import { colors, radii, spacing, TAB_BAR_HEIGHT, typography } from "@/theme";
 
 /** The small shared pieces every screen reaches for. */
+
+/**
+ * Breathing room under the status bar. The safe-area inset only guarantees
+ * content is not *behind* the notch — sitting flush against it still reads as
+ * cramped, so every header adds this on top. One constant, so no screen ends up
+ * looking tighter than its neighbours.
+ */
+const HEADER_TOP = spacing.lg;
 
 export function Screen({
   children,
@@ -56,6 +65,61 @@ export function Header({
           {subtitle ?? " "}
         </Text>
       </View>
+      {right}
+    </View>
+  );
+}
+
+/**
+ * The header for any screen you can go back from — the stack counterpart to
+ * `Header`. Owning the back affordance here is what keeps its spacing, size and
+ * fallback identical everywhere, and stops each screen inventing its own.
+ */
+export function BackHeader({
+  title,
+  subtitle,
+  right,
+  onBack,
+}: {
+  title?: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  /** Overrides going back — for a screen with its own steps to unwind. */
+  onBack?: () => void;
+}) {
+  const goBack = () => {
+    if (onBack) return onBack();
+    // Deep links and replaced routes can leave nothing to return to, and a
+    // dead back button is worse than one that goes somewhere sensible.
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  };
+
+  return (
+    <View style={styles.backHeader}>
+      <Pressable
+        onPress={goBack}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+      >
+        <Ionicons name="chevron-back" size={22} color={colors.text} />
+      </Pressable>
+
+      <View style={styles.backHeaderTitles}>
+        {title && (
+          <Text style={typography.sectionTitle} numberOfLines={1}>
+            {title}
+          </Text>
+        )}
+        {subtitle && (
+          <Text style={typography.caption} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+
       {right}
     </View>
   );
@@ -174,11 +238,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: HEADER_TOP,
     paddingBottom: spacing.md,
   },
   headerTitles: { flex: 1 },
   headerSubtitle: { marginTop: 2 },
+  backHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: HEADER_TOP,
+    paddingBottom: spacing.md,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  backHeaderTitles: { flex: 1 },
   button: {
     flexDirection: "row",
     alignItems: "center",
