@@ -143,7 +143,14 @@ export async function addToCart(
   return getCart(userId);
 }
 
-/** Absolute set, not a delta — the quantity stepper sends what it wants. */
+/**
+ * Absolute set, and an UPSERT — the line need not exist yet.
+ *
+ * That makes this a single idempotent operation the client can use for adding,
+ * changing and removing alike: it always states the quantity it wants, and
+ * sending the same value twice is a no-op. Coalescing rapid taps into one
+ * request is only safe because of that.
+ */
 export async function setQuantity(
   userId: string,
   productId: string,
@@ -151,13 +158,20 @@ export async function setQuantity(
 ): Promise<Cart> {
   const product = await requireProduct(productId);
 
-  const existing = await prisma.cartItem.findUnique({
-    where: { userId_productId: { userId, productId } },
-  });
+  if (quantity === 0) {
+    // Already absent is the state that was asked for, so converge quietly
+    // rather than 404 the way an explicit DELETE does.
+    await prisma.cartItem.deleteMany({ where: { userId, productId } });
+    return getCart(userId);
+  }
 
-  if (!existing) throw notFound(ERROR_CODES.NOT_IN_CART, "That item isn't in your cart.");
-
-  if (quantity === 0) return removeFromCart(userId, productId);
+  if (quantity > MAX_QUANTITY_PER_LINE) {
+    throw unprocessable(
+      ERROR_CODES.VALIDATION_FAILED,
+      `You can order at most ${MAX_QUANTITY_PER_LINE} of one item.`,
+      [{ field: "quantity", message: `Limit is ${MAX_QUANTITY_PER_LINE}.` }],
+    );
+  }
 
   if (quantity > product.stock) {
     throw conflict(
@@ -167,9 +181,10 @@ export async function setQuantity(
     );
   }
 
-  await prisma.cartItem.update({
+  await prisma.cartItem.upsert({
     where: { userId_productId: { userId, productId } },
-    data: { quantity },
+    create: { userId, productId, quantity },
+    update: { quantity },
   });
 
   return getCart(userId);

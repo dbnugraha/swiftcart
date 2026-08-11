@@ -6,26 +6,25 @@ import { useToast } from "@/context/toast";
 import { api, errorMessage } from "@/lib/api";
 
 /**
- * The cart, backed by the API but applied optimistically.
+ * The cart: local state is the user's intent, the server is told to match.
  *
- * Three rules keep that honest:
+ * Rapid taps on a quantity stepper are the whole difficulty here, and there are
+ * two distinct ways to get them wrong. This file has had both.
  *
- * 1. **Writes are serialised per product.** Tapping "+" three times quickly
- *    produces three requests for the same line; unserialised they can land out
- *    of order and leave a quantity nobody asked for. Chaining per product —
- *    not globally — keeps unrelated lines parallel.
+ * 1. **A stale payload.** Capturing the target when the button is tapped means
+ *    three fast taps from 1 all send "set to 2". Fixed by reading the target at
+ *    SEND time instead.
  *
- * 2. **The request payload is read at SEND time, never at tap time.** This is
- *    the bug this file used to have: `setQuantity` took an absolute target
- *    computed from the quantity that happened to be on screen, and the request
- *    closure captured it. Two fast taps from 1 both sent "set to 2" — the UI
- *    reached 3, then each response dragged it back down. Now the task reads the
- *    current optimistic quantity when it actually sends, which IS the user's
- *    intent, and an absolute PATCH makes that naturally idempotent.
+ * 2. **A stale response.** Far subtler: with several requests queued, the first
+ *    response carries quantity 2 while the user has already tapped up to 4.
+ *    Applying it clobbers the newer intent and the number visibly rebounds.
  *
- * 3. **`cartRef` is the synchronous source of truth**, mirrored into state for
- *    rendering. React state updates are scheduled, so a queued task reading
- *    state could see a value two taps stale.
+ * So the model is a per-product **sync loop**. Local state moves freely; one
+ * loop per product drives the server toward whatever the local value currently
+ * is, re-sending if the user moved again mid-flight, and a response is only
+ * adopted once it is known not to be stale. Because `PATCH /cart/items/:id` is
+ * an absolute upsert, re-sending is always safe and intermediate taps collapse
+ * into a single request.
  */
 
 const EMPTY_CART: Cart = {
@@ -40,7 +39,7 @@ const CartContext = createContext<{
   /** Quantity of one product, 0 when absent — drives every "in cart" badge. */
   quantityOf: (productId: string) => number;
   add: (product: Product, quantity?: number) => void;
-  /** Nudge a line by a delta. Prefer this over absolute sets — see rule 2. */
+  /** Nudge a line by a delta; the loop resolves the absolute target itself. */
   changeQuantity: (productId: string, delta: number) => void;
   remove: (productId: string) => void;
   clear: () => Promise<void>;
@@ -69,13 +68,15 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
 
-  // Synchronous mirror of `cart`. Queued tasks read this, never state.
+  // Synchronous mirror of `cart`. The sync loops read this, never state —
+  // scheduled state can be several taps behind.
   const cartRef = useRef<Cart>(EMPTY_CART);
 
-  // One promise chain per product id, and the last quantity actually sent for
-  // it. Refs, not state — sequencing handles that are never rendered.
-  const queues = useRef(new Map<string, Promise<void>>());
-  const lastSent = useRef(new Map<string, number>());
+  // Products with a running sync loop. While non-empty, no server response may
+  // be adopted wholesale: it could be older than the local intent.
+  const syncing = useRef(new Set<string>());
+  // Set when a response had to be discarded, so we true up once things settle.
+  const staleResponse = useRef(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -94,8 +95,6 @@ export default function CartProvider({ children }: { children: React.ReactNode }
 
   const reload = useCallback(async () => {
     const next = await api.get<Cart>("/cart");
-    // The server is authoritative, so anything we thought was in flight is moot.
-    lastSent.current.clear();
     applyCart(next);
   }, [applyCart]);
 
@@ -112,143 +111,129 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   }, []);
 
   /**
-   * Runs `task` after any in-flight write for the same product. Never rejects —
-   * each task handles its own failure, and an unhandled rejection here would be
-   * a redbox in development.
+   * Drives the server toward this product's local quantity, and keeps going
+   * until the two agree. Only one loop runs per product; a tap arriving while
+   * one is in flight is picked up by the loop itself rather than queuing
+   * another request.
    */
-  const enqueue = useCallback((productId: string, task: () => Promise<void>) => {
-    const previous = queues.current.get(productId) ?? Promise.resolve();
-    const next = previous.then(task, task).catch(() => undefined);
+  const syncProduct = useCallback(
+    async (productId: string) => {
+      if (syncing.current.has(productId)) return;
+      syncing.current.add(productId);
 
-    queues.current.set(productId, next);
+      try {
+        for (;;) {
+          const target = quantityIn(cartRef.current, productId);
 
-    void next.then(() => {
-      // Only clear if nothing queued behind us in the meantime.
-      if (queues.current.get(productId) === next) queues.current.delete(productId);
-    });
-  }, []);
+          const server = await api.patch<Cart>(`/cart/items/${productId}`, {
+            quantity: target,
+          });
 
-  /**
-   * Applies an optimistic change, then reconciles.
-   *
-   * On failure it RELOADS rather than restoring a snapshot: a whole-cart
-   * snapshot would also revert concurrent edits to a different line.
-   */
-  const mutate = useCallback(
-    (
-      productId: string,
-      optimistic: (current: Cart) => Cart,
-      request: () => Promise<Cart | null>,
-    ) => {
-      applyCart(optimistic);
+          // Did the user move again while that was in flight? If so this
+          // response is already out of date — send the new target instead of
+          // adopting it.
+          if (quantityIn(cartRef.current, productId) !== target) continue;
 
-      enqueue(productId, async () => {
-        try {
-          const authoritative = await request();
-          if (authoritative) applyCart(authoritative);
-        } catch (error) {
-          if (!isMounted.current) return;
-          // Let the next attempt through rather than suppressing it as a repeat.
-          lastSent.current.delete(productId);
-          toast.show(errorMessage(error), "error");
+          syncing.current.delete(productId);
+
+          if (syncing.current.size === 0) {
+            // Nothing else is optimistic, so the server's view is current.
+            applyCart(server);
+            staleResponse.current = false;
+          } else {
+            // Another product is still in flight; adopting this whole-cart
+            // response would clobber its optimistic line.
+            staleResponse.current = true;
+          }
+          return;
+        }
+      } catch (error) {
+        syncing.current.delete(productId);
+        if (!isMounted.current) return;
+
+        toast.show(errorMessage(error), "error");
+        // Reload rather than restoring a snapshot: a whole-cart snapshot would
+        // also revert concurrent edits to a different line.
+        await reload().catch(() => undefined);
+        staleResponse.current = false;
+      } finally {
+        syncing.current.delete(productId);
+
+        if (syncing.current.size === 0 && staleResponse.current) {
+          staleResponse.current = false;
           await reload().catch(() => undefined);
         }
-      });
+      }
     },
-    [applyCart, enqueue, reload, toast],
+    [applyCart, reload, toast],
+  );
+
+  /** Moves the local quantity, then lets the loop chase it. */
+  const setLocalQuantity = useCallback(
+    (productId: string, resolve: (current: number) => number, product?: Product) => {
+      applyCart((current) => {
+        const existing = current.lines.find((line) => line.productId === productId);
+        const next = Math.max(0, resolve(existing?.quantity ?? 0));
+
+        if (next === 0) {
+          return recalculate(current.lines.filter((line) => line.productId !== productId));
+        }
+
+        if (existing) {
+          return recalculate(
+            current.lines.map((line) =>
+              line.productId === productId
+                ? { ...line, quantity: next, lineTotal: line.product.salePrice * next }
+                : line,
+            ),
+          );
+        }
+
+        // Adding something not in the cart yet needs the product to render a
+        // line at all; callers that can't supply it are changing an existing
+        // line, so this is unreachable for them.
+        if (!product) return current;
+
+        return recalculate([
+          ...current.lines,
+          {
+            productId,
+            quantity: next,
+            product,
+            lineTotal: product.salePrice * next,
+          },
+        ]);
+      });
+
+      void syncProduct(productId);
+    },
+    [applyCart, syncProduct],
   );
 
   const add = useCallback(
     (product: Product, quantity = 1) => {
-      mutate(
-        product.id,
-        (current) => {
-          const existing = current.lines.find((line) => line.productId === product.id);
-
-          const lines = existing
-            ? current.lines.map((line) =>
-                line.productId === product.id
-                  ? {
-                      ...line,
-                      quantity: line.quantity + quantity,
-                      lineTotal: product.salePrice * (line.quantity + quantity),
-                    }
-                  : line,
-              )
-            : [
-                ...current.lines,
-                {
-                  productId: product.id,
-                  quantity,
-                  product,
-                  lineTotal: product.salePrice * quantity,
-                },
-              ];
-
-          return recalculate(lines);
-        },
-        // POST is a delta the server applies itself, so rapid adds accumulate
-        // correctly without any of the coalescing below.
-        () => api.post<Cart>("/cart/items", { productId: product.id, quantity }),
-      );
+      setLocalQuantity(product.id, (current) => current + quantity, product);
     },
-    [mutate],
+    [setLocalQuantity],
   );
 
   const changeQuantity = useCallback(
     (productId: string, delta: number) => {
-      mutate(
-        productId,
-        (current) => {
-          const next = Math.max(0, quantityIn(current, productId) + delta);
-
-          return recalculate(
-            next === 0
-              ? current.lines.filter((line) => line.productId !== productId)
-              : current.lines.map((line) =>
-                  line.productId === productId
-                    ? { ...line, quantity: next, lineTotal: line.product.salePrice * next }
-                    : line,
-                ),
-          );
-        },
-        async () => {
-          // Read the target HERE, not at tap time. Several taps queued together
-          // all resolve to the same end state, so the first send carries it and
-          // the rest are skipped as no-ops.
-          const target = quantityIn(cartRef.current, productId);
-
-          if (lastSent.current.get(productId) === target) return null;
-          lastSent.current.set(productId, target);
-
-          return target === 0
-            ? api.del<Cart>(`/cart/items/${productId}`)
-            : api.patch<Cart>(`/cart/items/${productId}`, { quantity: target });
-        },
-      );
+      setLocalQuantity(productId, (current) => current + delta);
     },
-    [mutate],
+    [setLocalQuantity],
   );
 
   const remove = useCallback(
     (productId: string) => {
-      mutate(
-        productId,
-        (current) =>
-          recalculate(current.lines.filter((line) => line.productId !== productId)),
-        async () => {
-          lastSent.current.set(productId, 0);
-          return api.del<Cart>(`/cart/items/${productId}`);
-        },
-      );
+      setLocalQuantity(productId, () => 0);
     },
-    [mutate],
+    [setLocalQuantity],
   );
 
   const clear = useCallback(async () => {
     const snapshot = cartRef.current;
     applyCart(EMPTY_CART);
-    lastSent.current.clear();
 
     try {
       applyCart(await api.del<Cart>("/cart"));
