@@ -1,23 +1,32 @@
 import { router, usePathname } from "expo-router";
-import { createContext, use, useRef } from "react";
-import { StyleSheet, View } from "react-native";
-import { Gesture, GestureDetector, type GestureType } from "react-native-gesture-handler";
-import { runOnJS } from "react-native-reanimated";
+import { createContext, use } from "react";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import {
+  runOnJS,
+  useSharedValue,
+  withSpring,
+  type SharedValue,
+} from "react-native-reanimated";
 
 /**
  * Drag left or right anywhere on a tab screen to move to the neighbouring tab.
  *
- * The gesture lives above the navigator rather than inside each screen, so it
- * exists exactly once and cannot drift out of step with the tab bar.
+ * The gesture lives above the navigator, so it exists exactly once and cannot
+ * drift out of step with the tab bar.
  *
- * Two thresholds keep it out of everyone else's way:
- *   - `failOffsetY` abandons the gesture as soon as the drag leans vertical, so
- *     scrolling a list is untouched.
- *   - `activeOffsetX` means a tap or a short drag never counts.
+ * **Activation is manual.** Letting gesture-handler decide, with an
+ * `activeOffsetX` threshold, meant it competed with the horizontal scrollers
+ * inside the screens — the category chips especially — and the tab would change
+ * out from under someone who was only scrolling the filters. Relating the
+ * gestures to each other did not settle it reliably. Deciding here instead
+ * makes the rule explicit and unconditional: a child that owns horizontal drags
+ * marks itself with `useTabSwipeSuppressor()`, and while a drag starts inside
+ * one, this gesture fails outright rather than racing it.
  *
- * That still leaves genuinely horizontal children — the category chips, the
- * Discover deck — competing for the same drag. Rather than guess, they claim
- * priority explicitly with `useTabSwipeRef()`; see `blocksExternalGesture`.
+ * The drag also drives `indicator`, a continuous position in tab units that the
+ * tab bar renders, so the bar follows your finger and shows where you would
+ * land before you let go.
  */
 
 /** Tab order, matching the bar. The index is what a swipe moves by. */
@@ -25,30 +34,54 @@ const TAB_ROUTES = ["/", "/discover", "/cart", "/account"] as const;
 
 type TabRoute = (typeof TAB_ROUTES)[number];
 
-/** Horizontal travel before the gesture takes over from anything beneath it. */
-const ACTIVATE_X = 24;
-/** Vertical travel that abandons it — a scroll, not a tab change. */
-const FAIL_Y = 18;
-/** Either of these commits the swipe: far enough, or fast enough. */
-const COMMIT_DISTANCE = 64;
-const COMMIT_VELOCITY = 450;
+/** Horizontal travel before the swipe takes the drag. */
+const ACTIVATE_X = 20;
+/** Vertical travel that abandons it — that is a scroll, not a tab change. */
+const FAIL_Y = 14;
+/** Fraction of a tab's travel that commits on release. */
+const COMMIT_PROGRESS = 0.35;
+/** …or this much speed, so a quick flick works without crossing the distance. */
+const COMMIT_VELOCITY = 550;
+/** Drag distance worth one whole tab, as a fraction of screen width. */
+const SPAN_RATIO = 0.45;
 
-const TabSwipeContext = createContext<React.RefObject<GestureType | undefined> | null>(null);
+/** Shared by the swipe and the bar, so both settle identically. */
+export const TAB_SPRING = { damping: 17, stiffness: 170, mass: 0.6 };
+
+type TabSwipeApi = {
+  /** Where the bar's indicator sits, in tab units. Fractional mid-drag. */
+  indicator: SharedValue<number>;
+  /** True while a child owns the drag and the tab swipe must stand aside. */
+  suppressed: SharedValue<boolean>;
+};
+
+const TabSwipeContext = createContext<TabSwipeApi | null>(null);
+
+/** Null outside the tabs — the deck and the bar are both reusable elsewhere. */
+export function useTabSwipe() {
+  return use(TabSwipeContext);
+}
 
 /**
- * A handle on the tab-swipe gesture, for a nested gesture that must win the
- * same drag. Spread it into `blocksExternalGesture`, which then makes the tab
- * swipe wait for that gesture to fail:
+ * Props for a view that owns horizontal drags of its own — a carousel, the
+ * Discover deck. Spread them on it and the tab swipe will not fight it:
  *
- * ```ts
- * const tabSwipe = useTabSwipeRef();
- * const pan = Gesture.Pan().blocksExternalGesture(...(tabSwipe ? [tabSwipe] : []));
+ * ```tsx
+ * <ScrollView horizontal {...useTabSwipeSuppressor()} />
  * ```
- *
- * Returns null outside the tabs, where there is nothing to block.
  */
-export function useTabSwipeRef() {
-  return use(TabSwipeContext);
+export function useTabSwipeSuppressor() {
+  const api = use(TabSwipeContext);
+
+  const set = (value: boolean) => () => {
+    if (api) api.suppressed.value = value;
+  };
+
+  return {
+    onTouchStart: set(true),
+    onTouchEnd: set(false),
+    onTouchCancel: set(false),
+  };
 }
 
 export default function TabSwipeArea({ children }: { children: React.ReactNode }) {
@@ -57,38 +90,75 @@ export default function TabSwipeArea({ children }: { children: React.ReactNode }
   // last time, so the navigator itself is left alone.
   const pathname = usePathname();
   const index = TAB_ROUTES.indexOf(pathname as TabRoute);
+  const { width } = useWindowDimensions();
+  const span = width * SPAN_RATIO;
 
-  const gestureRef = useRef<GestureType | undefined>(undefined);
+  const indicator = useSharedValue(0);
+  const suppressed = useSharedValue(false);
+  const startX = useSharedValue(0);
+  const startY = useSharedValue(0);
 
-  const go = (step: 1 | -1) => {
-    // -1 means a screen is stacked above the tabs, so there is no current tab
-    // to move from. Stopping at the ends is intentional; wrapping around from
-    // Account to Shop reads as a mis-swipe.
-    if (index === -1) return;
-
+  const go = (step: number) => {
     const next = TAB_ROUTES[index + step];
     if (next) router.navigate(next);
   };
 
   const pan = Gesture.Pan()
-    // Gesture handler stores this and writes to it when the detector attaches;
-    // it is never read during render. The compiler's ref rule can't see that
-    // through the builder call, so the suppression is scoped to this line.
-    // eslint-disable-next-line react-hooks/refs
-    .withRef(gestureRef)
-    .activeOffsetX([-ACTIVATE_X, ACTIVATE_X])
-    .failOffsetY([-FAIL_Y, FAIL_Y])
-    .onEnd((event) => {
-      const committed =
-        Math.abs(event.translationX) > COMMIT_DISTANCE ||
-        Math.abs(event.velocityX) > COMMIT_VELOCITY;
+    .manualActivation(true)
+    .onTouchesDown((event) => {
+      const touch = event.allTouches[0];
+      if (!touch) return;
 
+      startX.value = touch.absoluteX;
+      startY.value = touch.absoluteY;
+    })
+    .onTouchesMove((event, manager) => {
+      // -1 means a screen is stacked above the tabs, so there is no current tab
+      // to move from.
+      if (index === -1 || suppressed.value) {
+        manager.fail();
+        return;
+      }
+
+      const touch = event.allTouches[0];
+      if (!touch) return;
+
+      const dx = touch.absoluteX - startX.value;
+      const dy = touch.absoluteY - startY.value;
+
+      if (Math.abs(dy) > FAIL_Y) manager.fail();
+      else if (Math.abs(dx) > ACTIVATE_X) manager.activate();
+    })
+    .onUpdate((event) => {
       // Dragging content left reveals what is to its right — the next tab.
-      if (committed) runOnJS(go)(event.translationX < 0 ? 1 : -1);
+      const offset = -event.translationX / span;
+
+      // Clamped to the ends: there is nothing past Shop or Account, and the
+      // indicator refusing to move is the honest way to say so.
+      const bounded = Math.min(Math.max(offset, -index), TAB_ROUTES.length - 1 - index);
+      indicator.value = index + bounded;
+    })
+    .onEnd((event) => {
+      const offset = -event.translationX / span;
+      const velocity = -event.velocityX;
+
+      const flung = Math.abs(velocity) > COMMIT_VELOCITY;
+      const committed = flung || Math.abs(offset) > COMMIT_PROGRESS;
+      const step = committed ? Math.sign(flung ? velocity : offset) : 0;
+
+      const target = Math.min(Math.max(index + step, 0), TAB_ROUTES.length - 1);
+
+      indicator.value = withSpring(target, TAB_SPRING);
+      if (target !== index) runOnJS(go)(step);
+    })
+    .onFinalize(() => {
+      // Belt and braces: a child that never sees its touch end — because a
+      // parent claimed the responder — would otherwise leave this stuck on.
+      suppressed.value = false;
     });
 
   return (
-    <TabSwipeContext value={gestureRef}>
+    <TabSwipeContext value={{ indicator, suppressed }}>
       <GestureDetector gesture={pan}>
         <View style={styles.fill} collapsable={false}>
           {children}

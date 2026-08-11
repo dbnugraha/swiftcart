@@ -13,13 +13,12 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import type { Product } from "@swiftcart/shared";
 
 import ProductCard from "@/components/ProductCard";
 import SortSheet, { sortLabel } from "@/components/SortSheet";
-import { useTabSwipeRef } from "@/components/TabSwipe";
+import { useTabSwipeSuppressor } from "@/components/TabSwipe";
 import { Button, Header, Loading, Screen, StateView, useTabBarInset } from "@/components/ui";
 import { useCart } from "@/context/cart";
 import { useToast } from "@/context/toast";
@@ -39,8 +38,7 @@ export default function ShopScreen() {
   const { width } = useWindowDimensions();
   const [sortOpen, setSortOpen] = useState(false);
 
-  const tabSwipe = useTabSwipeRef();
-  const chipScroll = Gesture.Native().blocksExternalGesture(...(tabSwipe ? [tabSwipe] : []));
+  const suppressTabSwipe = useTabSwipeSuppressor();
 
   const categories = useResource<{ categories: { name: string; count: number }[] }>(
     "/products/categories",
@@ -98,34 +96,33 @@ export default function ShopScreen() {
         </Pressable>
       </View>
 
-      {/* Scrolling the chips is a horizontal drag too. Without this the tab
-          swipe would steal it and 24 categories would be unreachable. */}
-      <GestureDetector gesture={chipScroll}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-          style={styles.chipRow}
-        >
+      {/* Scrolling the chips is a horizontal drag too, so it claims the drag
+          outright — otherwise browsing 24 categories keeps changing tab. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+        style={styles.chipRow}
+        {...suppressTabSwipe}
+      >
+        <Chip
+          label="All"
+          isOn={catalogue.filters.category === null}
+          onPress={() => catalogue.setCategory(null)}
+        />
+        {(categories.data?.categories ?? []).map((category) => (
           <Chip
-            label="All"
-            isOn={catalogue.filters.category === null}
-            onPress={() => catalogue.setCategory(null)}
+            key={category.name}
+            label={`${category.name} (${category.count})`}
+            isOn={catalogue.filters.category === category.name}
+            onPress={() =>
+              catalogue.setCategory(
+                catalogue.filters.category === category.name ? null : category.name,
+              )
+            }
           />
-          {(categories.data?.categories ?? []).map((category) => (
-            <Chip
-              key={category.name}
-              label={`${category.name} (${category.count})`}
-              isOn={catalogue.filters.category === category.name}
-              onPress={() =>
-                catalogue.setCategory(
-                  catalogue.filters.category === category.name ? null : category.name,
-                )
-              }
-            />
-          ))}
-        </ScrollView>
-      </GestureDetector>
+        ))}
+      </ScrollView>
 
       {catalogue.isLoading ? (
         <Loading label="Fetching the catalogue" />

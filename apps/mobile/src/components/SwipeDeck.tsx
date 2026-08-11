@@ -14,7 +14,7 @@ import Animated, {
 
 import { formatCents, type Product } from "@swiftcart/shared";
 
-import { useTabSwipeRef } from "@/components/TabSwipe";
+import { useTabSwipeSuppressor } from "@/components/TabSwipe";
 import { Stars } from "@/components/ui";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
 
@@ -45,7 +45,7 @@ export default function SwipeDeck({
 }) {
   const { width } = useWindowDimensions();
   const [cursor, setCursor] = useState(0);
-  const tabSwipe = useTabSwipeRef();
+  const suppressTabSwipe = useTabSwipeSuppressor();
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -78,9 +78,6 @@ export default function SwipeDeck({
   };
 
   const pan = Gesture.Pan()
-    // Both this and the tab swipe want a horizontal drag. On the card, the card
-    // wins — swiping products is the entire point of this screen.
-    .blocksExternalGesture(...(tabSwipe ? [tabSwipe] : []))
     .onUpdate((event) => {
       translateX.value = event.translationX;
       translateY.value = event.translationY;
@@ -174,7 +171,12 @@ export default function SwipeDeck({
         )}
 
         <GestureDetector gesture={pan}>
-          <Animated.View style={[styles.card, shadows.floating, cardStyle]}>
+          {/* The card owns horizontal drags — swiping products is the point of
+              this screen, so the tab swipe stands aside while you are on one. */}
+          <Animated.View
+            style={[styles.card, shadows.floating, cardStyle]}
+            {...suppressTabSwipe}
+          >
             <Pressable
               style={styles.cardPress}
               onPress={() => onOpen(current)}

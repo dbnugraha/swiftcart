@@ -59,8 +59,12 @@ export default function ProductCard({
         )}
       </View>
 
+      {/* Every text block below reserves its full height whether or not it has
+          content. Cards sit side by side in a grid, so a one-line title next to
+          a two-line one would leave the row ragged and the two Add buttons at
+          different heights. */}
       <View style={styles.body}>
-        <Text style={typography.cardTitle} numberOfLines={2}>
+        <Text style={[typography.cardTitle, styles.title]} numberOfLines={2}>
           {product.title}
         </Text>
 
@@ -69,9 +73,9 @@ export default function ProductCard({
         <View style={styles.priceRow}>
           <View style={styles.prices}>
             <Text style={typography.price}>{formatCents(product.salePrice)}</Text>
-            {isDiscounted && (
-              <Text style={styles.wasPrice}>{formatCents(product.price)}</Text>
-            )}
+            <Text style={styles.wasPrice}>
+              {isDiscounted ? formatCents(product.price) : " "}
+            </Text>
           </View>
 
           <Pressable
@@ -147,6 +151,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
+  // minHeight rather than height: at large accessibility font sizes the text
+  // should push the card taller instead of being clipped.
+  title: { minHeight: typography.cardTitle.lineHeight * 2 },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
