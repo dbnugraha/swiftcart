@@ -8,9 +8,11 @@ import { colors } from "@/theme";
 // navigator is never reconfigured for nothing.
 const SCREEN_OPTIONS = {
   headerShown: false,
-  // Screens slide in the direction of travel, so a swipe and a tap on the bar
-  // resolve the same way.
-  animation: "shift",
+  // No scene animation, deliberately. The "shift" preset cross-fades the two
+  // screens over 150ms, so mid-transition both are around half opacity and the
+  // outgoing tab's contents ghost through the incoming one — on screens this
+  // dense it reads as a glitch, not a transition. The tab bar indicator already
+  // carries the motion, and it tracks the swipe rather than trailing it.
   sceneStyle: { backgroundColor: colors.background },
 } as const;
 
