@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -141,23 +141,49 @@ export default function ProductScreen() {
       </ScrollView>
 
       <View style={[styles.bar, shadows.floating, { paddingBottom: insets.bottom + spacing.md }]}>
-        <Button
-          label={
-            soldOut
-              ? "Sold out"
-              : atLimit
-                ? `Max ${product.stock} in cart`
-                : inCart > 0
-                  ? `Add another (${inCart} in cart)`
-                  : "Add to cart"
-          }
-          icon={soldOut ? "close-circle-outline" : "cart-outline"}
-          disabled={soldOut || atLimit}
-          onPress={() => {
-            cart.add(product);
-            toast.show(`${product.title} added`, "success");
-          }}
-        />
+        {inCart > 0 && (
+          <Text style={styles.inCart}>
+            {inCart} in your cart · {formatCents(product.salePrice * inCart)}
+          </Text>
+        )}
+
+        <View style={styles.barRow}>
+          <Button
+            label={
+              soldOut
+                ? "Sold out"
+                : atLimit
+                  ? `Max ${product.stock}`
+                  : inCart > 0
+                    ? "Add another"
+                    : "Add to cart"
+            }
+            icon={soldOut ? "close-circle-outline" : "cart-outline"}
+            // Steps back to secondary once something is in the cart: going to
+            // the cart becomes the more likely next move, and two primary
+            // buttons side by side would say nothing about which.
+            variant={inCart > 0 ? "secondary" : "primary"}
+            disabled={soldOut || atLimit}
+            style={styles.barButton}
+            onPress={() => {
+              cart.add(product);
+              toast.show(`${product.title} added`, "success");
+            }}
+          />
+
+          {inCart > 0 && (
+            <Button
+              label="Go to cart"
+              icon="arrow-forward"
+              style={styles.barButton}
+              // Dismisses rather than pushes: this screen sits above the tabs,
+              // and pushing would stack a second copy of them. If the cart is
+              // already below — you opened this from a cart line — it pops back
+              // to it, otherwise it replaces this screen.
+              onPress={() => router.dismissTo("/cart")}
+            />
+          )}
+        </View>
       </View>
     </Screen>
   );
@@ -244,6 +270,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  barRow: { flexDirection: "row", gap: spacing.sm },
+  // Narrower than a full-width button: two of these share the row, and
+  // "Go to cart" wraps to a second line if the padding stays at spacing.xl.
+  barButton: { flex: 1, paddingHorizontal: spacing.md },
+  inCart: { ...typography.caption, marginBottom: spacing.sm },
   bar: {
     position: "absolute",
     left: 0,

@@ -167,7 +167,12 @@ export function Button({
       ) : (
         <>
           {icon && <Ionicons name={icon} size={18} color={tint} />}
-          <Text style={[typography.button, { color: tint }]}>{label}</Text>
+          {/* One line always: a button sharing a row with another is narrow
+              enough that a long label would otherwise wrap and break its
+              fixed height. */}
+          <Text style={[typography.button, { color: tint }]} numberOfLines={1}>
+            {label}
+          </Text>
         </>
       )}
     </Pressable>
