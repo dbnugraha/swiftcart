@@ -149,16 +149,13 @@ export default function ProductScreen() {
 
         <View style={styles.barRow}>
           <Button
-            // Once the item is in the cart the button is the plus and the
-            // count — the words are carried by the line above it, and that
-            // frees the width the cart button needs for two icons.
             label={
               soldOut
                 ? "Sold out"
                 : atLimit
                   ? `Max ${product.stock}`
                   : inCart > 0
-                    ? String(inCart)
+                    ? "Add another"
                     : "Add to cart"
             }
             icon={soldOut ? "close-circle-outline" : "add"}
@@ -173,9 +170,10 @@ export default function ProductScreen() {
             }
             // Adding stays the primary action even once the item is in the
             // cart — this screen exists to sell the thing, and leaving for the
-            // cart is the way out, not the goal.
+            // cart is the way out, not the goal. It also keeps the wider half
+            // of the row, so its label never has to shorten.
             disabled={soldOut || atLimit}
-            style={inCart > 0 ? styles.barButtonTight : styles.barButton}
+            style={styles.barButton}
             onPress={() => {
               cart.add(product);
               toast.show(`${product.title} added`, "success");
@@ -184,11 +182,15 @@ export default function ProductScreen() {
 
           {inCart > 0 && (
             <Button
-              label="Go to cart"
+              // "Cart" rather than "Go to cart": between the trolley and the
+              // arrow the destination and the movement are already said, and
+              // the words that would repeat them cost the Add button its own.
+              label="Cart"
               icon="cart-outline"
               trailingIcon="arrow-forward"
+              accessibilityLabel={`Go to cart, ${inCart} of this item`}
               variant="secondary"
-              style={styles.barButton}
+              style={styles.barButtonCompact}
               // Dismisses rather than pushes: this screen sits above the tabs,
               // and pushing would stack a second copy of them. If the cart is
               // already below — you opened this from a cart line — it pops back
@@ -287,9 +289,9 @@ const styles = StyleSheet.create({
   // Narrower than a full-width button: two of these share the row, and
   // "Go to cart" wraps to a second line if the padding stays at spacing.xl.
   barButton: { flex: 1, paddingHorizontal: spacing.md },
-  // Sized to its content rather than half the row, so "＋ 2" stays compact and
-  // the cart button keeps the room its icon, label and arrow need.
-  barButtonTight: { paddingHorizontal: spacing.lg },
+  // Sized to its content rather than half the row. Two icons and a label in
+  // half a row would have ellipsised the Add button's on a 320dp screen.
+  barButtonCompact: { paddingHorizontal: spacing.md },
   inCart: { ...typography.caption, marginBottom: spacing.sm },
   bar: {
     position: "absolute",
