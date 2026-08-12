@@ -1,28 +1,31 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { Profile } from "@swiftcart/shared";
 
 import { Button, Header, Loading, Screen, StateView, useTabBarInset } from "@/components/ui";
 import { useAuth } from "@/context/auth";
+import { useConfirm } from "@/context/confirm";
 import { useResource } from "@/hooks/use-resource";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
 
 export default function AccountScreen() {
   const { signOut } = useAuth();
+  const confirm = useConfirm();
   const { data: profile, isLoading, error, retry } = useResource<Profile>("/me");
   const bottomInset = useTabBarInset();
 
-  const confirmSignOut = () => {
-    Alert.alert("Sign out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign out",
-        style: "destructive",
-        onPress: () => void signOut(),
-      },
-    ]);
+  const confirmSignOut = async () => {
+    const confirmed = await confirm({
+      title: "Sign out?",
+      body: "You'll need to sign in again to reach your cart and orders.",
+      confirmLabel: "Sign out",
+      tone: "danger",
+      icon: "log-out-outline",
+    });
+
+    if (confirmed) await signOut();
   };
 
   if (isLoading) {
@@ -117,7 +120,7 @@ export default function AccountScreen() {
           label="Sign out"
           icon="log-out-outline"
           variant="danger"
-          onPress={confirmSignOut}
+          onPress={() => void confirmSignOut()}
         />
       </ScrollView>
     </Screen>

@@ -1,12 +1,13 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { formatCents, type CartLine } from "@swiftcart/shared";
 
 import { Button, Header, Loading, Screen, StateView, useTabBarInset } from "@/components/ui";
 import { useCart } from "@/context/cart";
+import { useConfirm } from "@/context/confirm";
 import { useToast } from "@/context/toast";
 import { colors, radii, shadows, spacing, typography } from "@/theme";
 
@@ -14,6 +15,7 @@ export default function CartScreen() {
   const { cart, isLoading, changeQuantity, remove, clear } = useCart();
   const bottomInset = useTabBarInset();
   const toast = useToast();
+  const confirm = useConfirm();
 
   if (isLoading) return <Screen><Loading label="Loading your cart" /></Screen>;
 
@@ -31,11 +33,16 @@ export default function CartScreen() {
     );
   }
 
-  const onClear = () => {
-    Alert.alert("Empty your cart?", "This removes every item.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Empty cart", style: "destructive", onPress: () => void clear() },
-    ]);
+  const onClear = async () => {
+    const confirmed = await confirm({
+      title: "Empty your cart?",
+      body: `This removes all ${cart.itemCount} ${cart.itemCount === 1 ? "item" : "items"}.`,
+      confirmLabel: "Empty cart",
+      tone: "danger",
+      icon: "trash-outline",
+    });
+
+    if (confirmed) await clear();
   };
 
   return (
@@ -44,7 +51,7 @@ export default function CartScreen() {
         title="Cart"
         subtitle={`${cart.itemCount} ${cart.itemCount === 1 ? "item" : "items"}`}
         right={
-          <Pressable onPress={onClear} hitSlop={8} accessibilityRole="button">
+          <Pressable onPress={() => void onClear()} hitSlop={8} accessibilityRole="button">
             <Text style={styles.clear}>Empty</Text>
           </Pressable>
         }
