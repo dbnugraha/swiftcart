@@ -22,7 +22,6 @@ type IconPair = {
 
 const ICONS: Record<string, IconPair> = {
   index: { on: "storefront", off: "storefront-outline" },
-  discover: { on: "sparkles", off: "sparkles-outline" },
   cart: { on: "cart", off: "cart-outline" },
   account: { on: "person", off: "person-outline" },
 };

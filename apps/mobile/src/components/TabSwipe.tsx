@@ -30,7 +30,7 @@ import {
  */
 
 /** Tab order, matching the bar. The index is what a swipe moves by. */
-const TAB_ROUTES = ["/", "/discover", "/cart", "/account"] as const;
+const TAB_ROUTES = ["/", "/cart", "/account"] as const;
 
 type TabRoute = (typeof TAB_ROUTES)[number];
 

@@ -24,8 +24,9 @@ export default function TabsLayout() {
   return (
     <TabSwipeArea>
       <Tabs screenOptions={SCREEN_OPTIONS} tabBar={renderTabBar}>
+        {/* Discover is a mode of Shop, reached from its header — it is another
+            way to look at the same catalogue, not another place. */}
         <Tabs.Screen name="index" options={{ title: "Shop" }} />
-        <Tabs.Screen name="discover" options={{ title: "Discover" }} />
         <Tabs.Screen name="cart" options={{ title: "Cart" }} />
         <Tabs.Screen name="account" options={{ title: "Account" }} />
       </Tabs>
