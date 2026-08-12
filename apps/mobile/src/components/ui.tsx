@@ -132,6 +132,8 @@ export function Button({
   busy = false,
   disabled = false,
   icon,
+  trailingIcon,
+  accessibilityLabel,
   style,
 }: {
   label: string;
@@ -140,6 +142,10 @@ export function Button({
   busy?: boolean;
   disabled?: boolean;
   icon?: React.ComponentProps<typeof Ionicons>["name"];
+  /** Sits after the label — for a button that both names a thing and moves. */
+  trailingIcon?: React.ComponentProps<typeof Ionicons>["name"];
+  /** For when the label alone is too terse to announce, e.g. a bare count. */
+  accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }) {
   const isDisabled = disabled || busy;
@@ -151,6 +157,7 @@ export function Button({
       onPress={onPress}
       disabled={isDisabled}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: isDisabled, busy }}
       style={({ pressed }) => [
         styles.button,
@@ -173,6 +180,7 @@ export function Button({
           <Text style={[typography.button, { color: tint }]} numberOfLines={1}>
             {label}
           </Text>
+          {trailingIcon && <Ionicons name={trailingIcon} size={18} color={tint} />}
         </>
       )}
     </Pressable>
