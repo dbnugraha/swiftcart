@@ -73,13 +73,9 @@ export default function ShopScreen() {
         right={
           <ModeToggle
             mode={mode}
-            onPress={() => {
-              if (isDiscover) {
-                setMode("grid");
-                return;
-              }
-              setDeckLoaded(true);
-              setMode("discover");
+            onChange={(next) => {
+              if (next === "discover") setDeckLoaded(true);
+              setMode(next);
             }}
           />
         }
@@ -242,33 +238,66 @@ export default function ShopScreen() {
 }
 
 /**
- * Switches the shop between the grid and the deck. Labelled rather than a bare
- * icon: "sparkles" alone does not tell anyone what it does, and this is the
- * only way into Discover now that it has no tab of its own.
+ * Switches the shop between the grid and the deck.
+ *
+ * A two-segment pill rather than one button that swaps its own label: both
+ * modes are then shown the same way, the control keeps one width instead of
+ * resizing the header as you toggle, and you can see there are two views
+ * without having to press anything to find out.
  */
-function ModeToggle({ mode, onPress }: { mode: Mode; onPress: () => void }) {
-  const isDiscover = mode === "discover";
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: Mode;
+  onChange: (mode: Mode) => void;
+}) {
+  return (
+    <View style={styles.modes}>
+      <ModeSegment
+        icon="grid"
+        label="Product grid"
+        isOn={mode === "grid"}
+        onPress={() => onChange("grid")}
+      />
+      <ModeSegment
+        icon="sparkles"
+        label="Discover"
+        isOn={mode === "discover"}
+        onPress={() => onChange("discover")}
+      />
+    </View>
+  );
+}
 
+function ModeSegment({
+  icon,
+  label,
+  isOn,
+  onPress,
+}: {
+  icon: "grid" | "sparkles";
+  label: string;
+  isOn: boolean;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: isDiscover }}
-      accessibilityLabel={isDiscover ? "Back to the product grid" : "Open Discover"}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isOn }}
+      accessibilityLabel={label}
       style={({ pressed }) => [
-        styles.mode,
-        isDiscover && styles.modeOn,
-        pressed && styles.pressed,
+        styles.modeSegment,
+        isOn && styles.modeSegmentOn,
+        pressed && !isOn && styles.pressed,
       ]}
     >
       <Ionicons
-        name={isDiscover ? "grid-outline" : "sparkles"}
-        size={15}
-        color={isDiscover ? colors.surface : colors.primary}
+        name={isOn ? icon : (`${icon}-outline` as const)}
+        size={16}
+        color={isOn ? colors.surface : colors.textSecondary}
       />
-      <Text style={[styles.modeLabel, isDiscover && styles.modeLabelOn]}>
-        {isDiscover ? "Grid" : "Discover"}
-      </Text>
     </Pressable>
   );
 }
@@ -301,20 +330,23 @@ const styles = StyleSheet.create({
   // display:none rather than unmounting: Yoga drops it from layout entirely, so
   // the visible pane still fills the screen, but React keeps the subtree alive.
   hidden: { display: "none" },
-  mode: {
+  modes: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    height: 34,
-    paddingHorizontal: spacing.md,
+    padding: 3,
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceMuted,
   },
-  modeOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  modeLabel: { ...typography.caption, fontWeight: "700", color: colors.primary },
-  modeLabelOn: { color: colors.surface },
+  // Fixed width, so the pill is the same size whichever segment is selected.
+  modeSegment: {
+    width: 40,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.pill,
+  },
+  modeSegmentOn: { backgroundColor: colors.primary },
   controls: {
     flexDirection: "row",
     gap: spacing.sm,
