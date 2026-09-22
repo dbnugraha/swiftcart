@@ -32,3 +32,8 @@ health.get("/healthz", async (_req, res) => {
     res.status(503).json({ status: "unavailable", db: "down" });
   }
 });
+
+export const about = Router();
+about.get("/", (_req, res) => {
+  res.json({ message: "Swiftcart backend." });
+});

@@ -1,7 +1,22 @@
-# Postgres only. No Redis — this API reads from its own database and has no
-# upstream to cache, so a cache would add a failure mode without buying
+# Postgres and the API. No Redis — this API reads from its own database and has
+# no upstream to cache, so a cache would add a failure mode without buying
 # anything.
+#
+# The mobile client is not here: Expo builds to a device, not a container.
+#
+#   docker compose up -d --build     Postgres, migrations, then the API
+#   docker compose up -d db          Postgres only, to run the API on the host
 name: swiftcart
+
+# Every service that talks to Postgres needs the same URL, and it is not the one
+# in apps/api/.env — inside the network the host is `db` on 5432, not localhost
+# on the published port.
+x-database-url: &database-url
+  DATABASE_URL: postgres://swiftcart:swiftcart@db:5432/swiftcart
+
+x-api-build: &api-build
+  context: .
+  dockerfile: apps/api/Dockerfile
 
 services:
   db:
@@ -22,6 +37,66 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+
+  # Runs to completion before the API starts, so a container never serves
+  # against a schema older than the code. `migrate deploy` applies only
+  # committed migrations and is a no-op once they are all in, which is what
+  # makes it safe on every `up`.
+  migrate:
+    build:
+      <<: *api-build
+      target: toolchain
+    restart: "no"
+    environment: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Catalogue and demo account. Profiled out of `up` because it is a one-off
+  # that reaches DummyJSON over the network:
+  #   docker compose run --rm seed
+  seed:
+    profiles: ["seed"]
+    build:
+      <<: *api-build
+      target: toolchain
+    restart: "no"
+    environment: *database-url
+    command: ["npm", "run", "seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    build:
+      <<: *api-build
+      target: runtime
+    restart: unless-stopped
+    # PID 1 reaps nothing by default, and the server spawns nothing — but this
+    # also guarantees Ctrl-C reaches the SIGTERM handler that drains in-flight
+    # requests before the pool closes.
+    init: true
+    # JWT_SECRET and the token TTLs come from the file you already keep for
+    # running the API on the host. Optional so that `up` still reaches the
+    # env check in src/env.ts, which explains what is missing far better than
+    # compose refusing to start.
+    env_file:
+      - path: apps/api/.env
+        required: false
+    # Listed after env_file, and so wins over it: the file's DATABASE_URL points
+    # at localhost:5433, which inside this container is the container itself.
+    environment:
+      <<: *database-url
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

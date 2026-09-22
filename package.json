@@ -15,9 +15,14 @@
     "postinstall": "npm run build --workspace @swiftcart/shared",
     "build:shared": "npm run build --workspace @swiftcart/shared",
     "dev:shared": "npm run dev --workspace @swiftcart/shared",
-    "db:up": "docker compose up -d",
+    "//db": "Postgres alone, for running the API on the host. The stack scripts below run the API in a container too.",
+    "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
-    "db:reset": "docker compose down -v && docker compose up -d",
+    "db:reset": "docker compose down -v && docker compose up -d db",
+    "up": "docker compose up -d --build",
+    "down": "docker compose down",
+    "logs": "docker compose logs -f api",
+    "seed:docker": "docker compose run --rm seed",
     "api": "npm run dev --workspace @swiftcart/api",
     "mobile": "npm run start --workspace @swiftcart/mobile",
     "mobile:tunnel": "npm run start:tunnel --workspace @swiftcart/mobile",
@@ -28,8 +33,10 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   },
+  "//react": "Expo's packages declare `react: \"*\"` as a peer, so npm auto-installs the newest React at the root and the mobile app's exact pin nests beneath it — two Reacts in one native build. `overrides` does not reach auto-installed peers, so hold the hoisted slot with the version SDK 57 expects and let the mobile copy dedupe into it.",
   "devDependencies": {
     "@expo/ngrok": "^4.1.3",
-    "cross-env": "^10.1.0"
+    "cross-env": "^10.1.0",
+    "react": "19.2.3"
   }
 }

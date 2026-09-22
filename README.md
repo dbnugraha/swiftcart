@@ -32,18 +32,47 @@ definition, so renaming a field breaks the build instead of the app.
 
 Needs Node 20.19+, Docker, and a device or emulator.
 
-```bash
-npm install                     # also builds packages/shared
+Either way, first write the API's environment file — the secret is yours to
+generate and is never baked into an image:
 
+```bash
 cp apps/api/.env.example apps/api/.env
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 #   paste that as JWT_SECRET
+```
 
-npm run db:up                   # Postgres on host port 5433
+### Backend in Docker
+
+Postgres and the API both in containers. Migrations run automatically before
+the API starts, so the schema is never behind the code.
+
+```bash
+npm run up                      # build + start; http://localhost:4000
+npm run seed:docker             # 194 products, 24 categories, demo account
+npm run logs
+npm run down
+```
+
+`DATABASE_URL` in `apps/api/.env` is ignored here — inside the compose network
+Postgres is `db:5432`, not `localhost:5433`, so the URL is set on the service.
+Everything else in that file (`JWT_SECRET`, the token TTLs, `CORS_ORIGIN`) is
+read as written.
+
+### API on the host
+
+Faster to iterate on, since `tsx watch` reloads without a rebuild. Postgres
+still comes from Docker.
+
+```bash
+npm install                     # also builds packages/shared
+
+npm run db:up                   # Postgres alone, on host port 5433
 npm run migrate
-npm run seed                    # 194 products, 24 categories, demo account
+npm run seed
 npm run api                     # http://localhost:4000
 ```
+
+### The client
 
 Then, in a second terminal:
 
@@ -121,6 +150,25 @@ watch while editing it.
 **Errors use one envelope**, `{ error: { code, message, fields? } }`. The client
 switches on `code`, never on message text. Ownership failures return 404 rather
 than 403 — a 403 would confirm the resource exists.
+
+**The API image is built from the repo root**, not from `apps/api` — the server
+imports `@swiftcart/shared` and installs against the workspace lockfile, and a
+narrower context can reach neither. [`apps/api/Dockerfile`](apps/api/Dockerfile)
+produces two images: `runtime`, which is compiled JavaScript and production
+dependencies only, and `toolchain`, which keeps the sources so it can run
+`prisma migrate deploy` and the seed. The Prisma CLI and the TypeScript compiler
+are things you need to *produce* the server, not to run it, so they stay out of
+the image that faces the network.
+
+That split needs `--legacy-peer-deps` on the production install, which looks
+alarming and isn't. `@prisma/client` declares `prisma` and `typescript` as
+*optional peers*, and npm installs optional peers by default — dragging the CLI,
+the compiler and Studio's React tree into a production tree. `--omit=dev` alone
+won't evict them (they are reachable through the peer edge) and `--omit=optional`
+evicts too much (`@node-rs/argon2`'s platform binary is a genuine
+optionalDependency, and password hashing dies without it). Declining to
+auto-install peers drops exactly the unwanted set: 366MB of `node_modules`
+becomes 109MB.
 
 ---
 

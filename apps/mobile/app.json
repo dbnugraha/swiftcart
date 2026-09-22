@@ -18,16 +18,23 @@
       "expo-router",
       "expo-secure-store",
       [
-        "expo-splash-screen",
+        "expo-build-properties",
         {
-          "backgroundColor": "#FFFFFF",
-          "resizeMode": "contain"
+          "android": {
+            "usesCleartextTraffic": true
+          }
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "76aa3168-a6ed-41d4-b929-c795c2dfdfef"
+      }
     }
   }
 }

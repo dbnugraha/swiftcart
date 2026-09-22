@@ -6,7 +6,7 @@ import { pinoHttp } from "pino-http";
 import { env } from "./env.js";
 import { logger } from "./lib/logger.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
-import { health, v1 } from "./routes.js";
+import { about, health, v1 } from "./routes.js";
 
 export function createApp() {
   const app = express();
@@ -18,12 +18,16 @@ export function createApp() {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN.split(",").map((o) => o.trim()),
+      origin:
+        env.CORS_ORIGIN === "*"
+          ? true
+          : env.CORS_ORIGIN.split(",").map((o) => o.trim()),
     }),
   );
   app.use(express.json({ limit: "1mb" }));
   app.use(pinoHttp({ logger }));
 
+  app.use(about);
   app.use(health);
   app.use("/v1", v1);
 
